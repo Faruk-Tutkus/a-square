@@ -1,16 +1,26 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { LevelConfig } from '../types';
+import { LevelConfig, GameConfig, EnemyConfig } from '../types';
+import { GAME_DATA } from '../constants';
 
-export interface EditorState {
+// Represents the state of a SINGLE level in the editor
+export interface EditorLevelState {
+    internalId: string; // Unique ID for editor list handling
     objects: EditorObject[];
     mapSize: { w: number, h: number };
     levelName: string;
+    gameLevelId: number; // The actual ID used in game logic
+}
+
+// Represents the state of the ENTIRE editor session (all levels)
+export interface EditorCampaignState {
+    levels: EditorLevelState[];
+    activeIndex: number;
 }
 
 interface MapEditorProps {
-    initialState?: EditorState;
+    initialState?: EditorCampaignState; // Changed from EditorState
     onBack: () => void;
-    onPlay: (levelData: LevelConfig, editorState: EditorState) => void;
+    onPlay: (levelData: LevelConfig, editorState: EditorCampaignState) => void;
 }
 
 // Editor-specific types
@@ -35,13 +45,165 @@ export interface EditorObject {
 
 const TILE_SIZE = 32;
 
+// --- PARSER UTILITIES (LevelConfig -> EditorLevelState) ---
+const getNextId = (prefix: string) => `${prefix}_${Date.now()}_${Math.floor(Math.random()*10000)}`;
+
+const parseLevelToEditorState = (level: LevelConfig): EditorLevelState => {
+    const objects: EditorObject[] = [];
+
+    // Platforms
+    level.map.platforms.forEach(p => {
+        objects.push({
+            id: getNextId('plat'),
+            type: 'platform',
+            x: p.x,
+            y: p.y,
+            w: p.w,
+            h: p.h || 1
+        });
+    });
+
+    // Enemies
+    if (level.enemies) {
+        level.enemies.forEach(e => {
+            objects.push({
+                id: getNextId('enemy'),
+                type: 'enemy',
+                x: e.x,
+                y: e.y !== undefined ? e.y : 0, 
+                subType: e.type,
+                hp: e.hp,
+                speed: e.speed
+            });
+        });
+    }
+
+    // Boxes
+    if (level.boxes) {
+        level.boxes.forEach(b => {
+            objects.push({ id: getNextId('box'), type: 'box', x: b.x, y: b.y });
+        });
+    }
+
+    // Doors
+    if (level.doors) {
+        level.doors.forEach(d => {
+            objects.push({
+                id: getNextId('door'),
+                type: 'door',
+                x: d.x,
+                y: d.y,
+                h: d.h,
+                linkId: d.id
+            });
+        });
+    }
+
+    // Buttons
+    if (level.buttons) {
+        level.buttons.forEach(b => {
+            objects.push({
+                id: getNextId('btn'),
+                type: 'button',
+                x: b.x,
+                y: b.y,
+                linkId: b.id,
+                linkTo: b.linkToDoorId,
+                behavior: b.behavior
+            });
+        });
+    }
+
+    // Info Points
+    if (level.infoPoints) {
+        level.infoPoints.forEach(i => {
+            objects.push({
+                id: getNextId('info'),
+                type: 'info',
+                x: i.x,
+                y: 10, // Default Y
+                w: i.w,
+                text: i.text
+            });
+        });
+    }
+
+    // Key
+    if (level.hasKey && level.keyPos) {
+        objects.push({
+            id: getNextId('key'),
+            type: 'key',
+            x: level.keyPos.x,
+            y: level.keyPos.y
+        });
+    }
+
+    // Start (Checkpoint)
+    if (level.checkpoints && level.checkpoints.length > 0) {
+        objects.push({
+            id: getNextId('start'),
+            type: 'start',
+            x: level.checkpoints[0].x,
+            y: level.checkpoints[0].y
+        });
+    } else {
+         objects.push({ id: getNextId('start'), type: 'start', x: 2, y: 10 });
+    }
+
+    // Exit
+    if (level.portalPos) {
+        objects.push({
+            id: getNextId('exit'),
+            type: 'exit',
+            x: level.portalPos.x,
+            y: level.portalPos.y
+        });
+    }
+
+    return {
+        internalId: getNextId('level_state'),
+        gameLevelId: level.id,
+        levelName: level.name,
+        mapSize: level.map.size,
+        objects: objects
+    };
+};
+
+
 export const MapEditor: React.FC<MapEditorProps> = ({ initialState, onBack, onPlay }) => {
-    // Canvas State
-    const [mapSize, setMapSize] = useState(initialState?.mapSize || { w: 80, h: 25 });
-    const [objects, setObjects] = useState<EditorObject[]>(initialState?.objects || [
-        { id: 'start', type: 'start', x: 5, y: 10 }
-    ]);
-    const [levelName, setLevelName] = useState(initialState?.levelName || 'My Custom Level');
+    
+    // --- STATE MANAGEMENT ---
+    // Initialize campaign with existing GAME_DATA levels or persisted state
+    const [campaignLevels, setCampaignLevels] = useState<EditorLevelState[]>(() => {
+        if (initialState && initialState.levels.length > 0) {
+            return initialState.levels;
+        }
+        
+        // Import existing levels if no state provided
+        if (GAME_DATA.levels.length > 0) {
+            return GAME_DATA.levels.map(parseLevelToEditorState);
+        }
+        
+        // Fallback default
+        return [{
+            internalId: 'default_1',
+            gameLevelId: 0,
+            levelName: 'New Level',
+            mapSize: { w: 60, h: 25 },
+            objects: [{ id: 'start_1', type: 'start', x: 5, y: 10 }]
+        }];
+    });
+
+    const [currentLevelIndex, setCurrentLevelIndex] = useState(initialState?.activeIndex || 0);
+
+    // Current Working State (decoupled from array for performance)
+    const [mapSize, setMapSize] = useState(campaignLevels[currentLevelIndex].mapSize);
+    const [objects, setObjects] = useState<EditorObject[]>(campaignLevels[currentLevelIndex].objects);
+    const [levelName, setLevelName] = useState(campaignLevels[currentLevelIndex].levelName);
+    const [gameLevelId, setGameLevelId] = useState(campaignLevels[currentLevelIndex].gameLevelId);
+
+    // Undo History (Local to current level)
+    const [history, setHistory] = useState<EditorObject[][]>([]);
     
     // UI State
     const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -51,32 +213,173 @@ export const MapEditor: React.FC<MapEditorProps> = ({ initialState, onBack, onPl
     
     const canvasRef = useRef<HTMLDivElement>(null);
 
-    // Helpers
-    const getNextId = (prefix: string) => `${prefix}_${Date.now()}_${Math.floor(Math.random()*1000)}`;
+    // Sync Helper: Saves current workspace to the campaign array
+    const saveWorkspaceToCampaign = () => {
+        setCampaignLevels(prev => {
+            const newLevels = [...prev];
+            newLevels[currentLevelIndex] = {
+                ...newLevels[currentLevelIndex],
+                objects,
+                mapSize,
+                levelName,
+                gameLevelId
+            };
+            return newLevels;
+        });
+    };
+
+    // Switch Level Handler
+    const handleSwitchLevel = (index: number) => {
+        if (index === currentLevelIndex) return;
+        
+        // Save current level state to array
+        setCampaignLevels(prev => {
+            const newLevels = [...prev];
+            newLevels[currentLevelIndex] = {
+                ...newLevels[currentLevelIndex],
+                objects,
+                mapSize,
+                levelName,
+                gameLevelId
+            };
+            return newLevels;
+        });
+        
+        // Load target level state
+        const target = campaignLevels[index]; 
+        
+        // Note: In strict mode, campaignLevels might not be updated immediately in this scope if we relied on the setter above.
+        // However, we are reading from 'campaignLevels' which is the render-cycle state.
+        // To be perfectly safe, we should assume the 'objects' state variable holds the latest edits for the *current* level index.
+        
+        setObjects(target.objects);
+        setMapSize(target.mapSize);
+        setLevelName(target.levelName);
+        setGameLevelId(target.gameLevelId);
+        setHistory([]); // Clear history on switch
+        setSelectedId(null);
+        setCurrentLevelIndex(index);
+    };
+
+    const handleAddLevel = () => {
+        // Save current level first
+        const currentLevelState: EditorLevelState = {
+            ...campaignLevels[currentLevelIndex],
+            objects,
+            mapSize,
+            levelName,
+            gameLevelId
+        };
+        
+        const newId = campaignLevels.length;
+        const newLevel: EditorLevelState = {
+            internalId: getNextId('lvl'),
+            gameLevelId: newId,
+            levelName: `Level ${newId}`,
+            mapSize: { w: 60, h: 25 },
+            objects: [{ id: getNextId('start'), type: 'start', x: 5, y: 10 }]
+        };
+
+        const updatedCampaign = [...campaignLevels];
+        updatedCampaign[currentLevelIndex] = currentLevelState;
+        updatedCampaign.push(newLevel);
+
+        setCampaignLevels(updatedCampaign);
+
+        // Switch to new level
+        const nextIndex = updatedCampaign.length - 1; 
+        setObjects(newLevel.objects);
+        setMapSize(newLevel.mapSize);
+        setLevelName(newLevel.levelName);
+        setGameLevelId(newLevel.gameLevelId);
+        setHistory([]);
+        setSelectedId(null);
+        setCurrentLevelIndex(nextIndex);
+    };
+
+    const handleDeleteLevel = (index: number, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (campaignLevels.length <= 1) {
+            alert("Cannot delete the last level.");
+            return;
+        }
+        
+        const confirmDelete = window.confirm(`Delete Level ${index}: ${campaignLevels[index].levelName}?`);
+        if (!confirmDelete) return;
+
+        // Logic to handle deletion
+        // If we delete a level before current, decrement current index
+        // If we delete current, switch to neighbor
+        
+        const isDeletingCurrent = index === currentLevelIndex;
+        
+        const remainingLevels = campaignLevels.filter((_, i) => i !== index);
+        
+        if (isDeletingCurrent) {
+            const newIndex = index > 0 ? index - 1 : 0;
+            const target = remainingLevels[newIndex];
+            
+            setObjects(target.objects);
+            setMapSize(target.mapSize);
+            setLevelName(target.levelName);
+            setGameLevelId(target.gameLevelId);
+            setHistory([]);
+            setSelectedId(null);
+            setCurrentLevelIndex(newIndex);
+        } else if (index < currentLevelIndex) {
+            setCurrentLevelIndex(prev => prev - 1);
+        }
+
+        setCampaignLevels(remainingLevels);
+    };
+
+    // KEYBOARD SHORTCUTS
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Undo (Ctrl+Z or Cmd+Z)
+            if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+                e.preventDefault();
+                undo();
+            }
+            // Delete
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                if (selectedId) {
+                    deleteSelected();
+                }
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [selectedId, history, objects]); 
+
+    const saveHistory = () => {
+        setHistory(prev => [...prev, objects]);
+    };
+
+    const undo = () => {
+        setHistory(prev => {
+            if (prev.length === 0) return prev;
+            const previousObjects = prev[prev.length - 1];
+            const newHistory = prev.slice(0, prev.length - 1);
+            setObjects(previousObjects);
+            setSelectedId(null);
+            return newHistory;
+        });
+    };
 
     const addObject = (x: number, y: number) => {
         if (!activeTool) return;
+        saveHistory();
 
-        // Calculate size first to determine centering
         let initialW = 1;
         let initialH = 1;
 
-        if (activeTool === 'platform') {
-            initialW = 5;
-            initialH = 1;
-        } else if (activeTool === 'door') {
-            initialW = 1; 
-            initialH = 3;
-        } else if (activeTool === 'exit') {
-            initialW = 1.5; 
-            initialH = 2;
-        } else if (activeTool === 'info') {
-            initialW = 4;
-            initialH = 1;
-        }
+        if (activeTool === 'platform') { initialW = 5; initialH = 1; } 
+        else if (activeTool === 'door') { initialW = 1; initialH = 3; } 
+        else if (activeTool === 'exit') { initialW = 1.5; initialH = 2; } 
+        else if (activeTool === 'info') { initialW = 4; initialH = 1; }
 
-        // Align center of object to the clicked tile (x,y)
-        // Logic: StartX = ClickX - Floor(Width / 2)
         const centerX = x - Math.floor(initialW / 2 + 0.5);
         const centerY = y - Math.floor(initialH / 2 + 0.5);
 
@@ -100,7 +403,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ initialState, onBack, onPl
             newObj.linkId = getNextId('btn');
             newObj.behavior = 'once'; 
         } else if (activeTool === 'exit') {
-            newObj.linkTo = '1';
+            newObj.linkTo = String(gameLevelId + 1); // Suggest next level ID
         } else if (activeTool === 'info') {
             newObj.text = "Info text here...";
         }
@@ -109,17 +412,18 @@ export const MapEditor: React.FC<MapEditorProps> = ({ initialState, onBack, onPl
         setSelectedId(newObj.id);
     };
 
-    const updateObject = (id: string, updates: Partial<EditorObject>) => {
-        setObjects(objects.map(o => o.id === id ? { ...o, ...updates } : o));
+    const updateObject = (id: string, updates: Partial<EditorObject>, addToHistory = true) => {
+        if (addToHistory) saveHistory();
+        setObjects(prev => prev.map(o => o.id === id ? { ...o, ...updates } : o));
     };
 
     const deleteSelected = () => {
         if (!selectedId) return;
-        setObjects(objects.filter(o => o.id !== selectedId));
+        saveHistory();
+        setObjects(prev => prev.filter(o => o.id !== selectedId));
         setSelectedId(null);
     };
 
-    // Canvas Events
     const handleCanvasClick = (e: React.MouseEvent) => {
         if (!isDragging && activeTool && (e.target as HTMLElement).classList.contains('editor-grid')) {
             const rect = canvasRef.current!.getBoundingClientRect();
@@ -132,9 +436,10 @@ export const MapEditor: React.FC<MapEditorProps> = ({ initialState, onBack, onPl
     };
 
     const handleObjectMouseDown = (e: React.MouseEvent, id: string) => {
-        e.stopPropagation(); // Stop bubbling to grid
+        e.stopPropagation(); 
         setSelectedId(id);
         setIsDragging(true);
+        saveHistory(); 
     };
     
     const handleMouseMove = (e: React.MouseEvent) => {
@@ -146,22 +451,19 @@ export const MapEditor: React.FC<MapEditorProps> = ({ initialState, onBack, onPl
             const obj = objects.find(o => o.id === selectedId);
             if (!obj) return;
 
-            // Convert Mouse Pixel Position directly to Grid Tile Index
             const mouseGridX = Math.floor(mouseX / TILE_SIZE);
             const mouseGridY = Math.floor(mouseY / TILE_SIZE);
 
             const w = obj.w || 1;
             const h = obj.h || 1;
 
-            // Calculate Top-Left coordinate such that the object is centered on the mouse
             const targetX = mouseGridX - Math.floor(w / 2 + 0.5);
             const targetY = mouseGridY - Math.floor(h / 2 + 0.5);
             
-            // Boundary checks
             const clampedX = Math.max(0, Math.min(targetX, mapSize.w - w));
             const clampedY = Math.max(0, Math.min(targetY, mapSize.h - h));
 
-            updateObject(selectedId, { x: clampedX, y: clampedY });
+            updateObject(selectedId, { x: clampedX, y: clampedY }, false);
         }
     };
 
@@ -169,14 +471,17 @@ export const MapEditor: React.FC<MapEditorProps> = ({ initialState, onBack, onPl
         setIsDragging(false);
     };
 
-    // Export / Test Logic
-    const generateLevelConfig = (): LevelConfig => {
+    // --- CONVERSION LOGIC ---
+    const generateLevelConfig = (state: EditorLevelState): LevelConfig => {
+        const { objects, mapSize, levelName, gameLevelId } = state;
+
         const platforms = objects.filter(o => o.type === 'platform').map(o => ({ 
             x: o.x, y: o.y, w: o.w || 1, h: o.h || 1 
         }));
         const enemies = objects.filter(o => o.type === 'enemy').map(o => ({ 
             type: o.subType as any, 
             x: o.x,
+            y: o.y,
             hp: o.hp,
             speed: o.speed
         }));
@@ -194,7 +499,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ initialState, onBack, onPl
         const exitObj = objects.find(o => o.type === 'exit');
 
         return {
-            id: 999, 
+            id: gameLevelId, 
             name: levelName,
             map: {
                 size: { w: mapSize.w, h: mapSize.h },
@@ -210,32 +515,63 @@ export const MapEditor: React.FC<MapEditorProps> = ({ initialState, onBack, onPl
             keyPos: keyObj ? { x: keyObj.x, y: keyObj.y } : undefined,
             portalPos: exitObj ? { x: exitObj.x, y: exitObj.y } : undefined,
             checkpoints: [{ x: startObj.x, y: startObj.y }],
-            exit: { to: 1 }, 
-            ending: exitObj ? { message: "Custom Level Complete" } : undefined
+            exit: { to: exitObj && exitObj.linkTo ? parseInt(exitObj.linkTo) : gameLevelId + 1 }, 
+            ending: undefined
         };
     };
 
     const handleTestPlay = () => {
-        const config = generateLevelConfig();
-        const state: EditorState = { objects, mapSize, levelName };
-        onPlay(config, state);
+        // 1. Create the up-to-date state for the current level being edited
+        const currentLevelState: EditorLevelState = { 
+            internalId: campaignLevels[currentLevelIndex].internalId, // keep original ID
+            gameLevelId, 
+            levelName, 
+            mapSize, 
+            objects 
+        };
+        
+        // 2. Construct the full campaign array with the current level updated
+        const updatedCampaign = [...campaignLevels];
+        updatedCampaign[currentLevelIndex] = currentLevelState;
+
+        // 3. Create the campaign state object to pass back to App
+        const fullCampaignState: EditorCampaignState = {
+            levels: updatedCampaign,
+            activeIndex: currentLevelIndex
+        };
+
+        // 4. Generate the playable config for just this level
+        const config = generateLevelConfig(currentLevelState);
+        config.id = 999; // Force test ID
+        
+        // 5. Trigger play
+        onPlay(config, fullCampaignState);
     };
 
-    const handleDownloadJson = () => {
-        const config = generateLevelConfig();
-        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(config, null, 2));
+    const handleDownloadCampaign = () => {
+        // Construct latest state similar to test play
+        const currentLevelState: EditorLevelState = { 
+            internalId: campaignLevels[currentLevelIndex].internalId,
+            gameLevelId, levelName, mapSize, objects 
+        };
+        
+        const updatedCampaign = [...campaignLevels];
+        updatedCampaign[currentLevelIndex] = currentLevelState;
+
+        const convertedLevels = updatedCampaign.map(lvl => generateLevelConfig(lvl));
+        
+        const fullConfig: GameConfig = {
+            ...GAME_DATA,
+            levels: convertedLevels
+        };
+
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(fullConfig, null, 2));
         const downloadAnchorNode = document.createElement('a');
         downloadAnchorNode.setAttribute("href", dataStr);
-        downloadAnchorNode.setAttribute("download", levelName.replace(/\s+/g, '_') + ".json");
+        downloadAnchorNode.setAttribute("download", "campaign_export.json");
         document.body.appendChild(downloadAnchorNode);
         downloadAnchorNode.click();
         downloadAnchorNode.remove();
-    };
-
-    const handleCopyJson = () => {
-        const config = generateLevelConfig();
-        navigator.clipboard.writeText(JSON.stringify(config, null, 2));
-        alert("JSON copied to clipboard!");
     };
 
     // Render Logic for Grid Objects
@@ -319,28 +655,43 @@ export const MapEditor: React.FC<MapEditorProps> = ({ initialState, onBack, onPl
     const selectedObject = objects.find(o => o.id === selectedId);
 
     return (
-        <div className="absolute inset-0 bg-[#222] text-white flex flex-col z-[200] overflow-hidden">
-            {/* Header */}
-            <div className="h-12 bg-[#111] flex items-center justify-between px-4 border-b border-[#333]">
-                <div className="flex items-center gap-4">
-                    <button onClick={onBack} className="bg-gray-700 px-3 py-1 rounded hover:bg-gray-600 text-xs">BACK</button>
-                    <input 
-                        className="bg-transparent border-b border-gray-500 text-lg font-mono focus:outline-none" 
-                        value={levelName}
-                        onChange={(e) => setLevelName(e.target.value)}
-                    />
+        <div className="absolute inset-0 bg-[#222] text-white flex z-[200] overflow-hidden">
+            
+            {/* LEFT SIDEBAR: LEVEL LIST & TOOLS */}
+            <div className="w-56 bg-[#1a1a1a] flex flex-col border-r border-[#333] shrink-0">
+                <div className="p-3 border-b border-[#333] font-bold text-sm flex justify-between items-center">
+                    <span>CAMPAIGN</span>
+                    <button onClick={onBack} className="text-gray-500 hover:text-white text-xs">EXIT</button>
                 </div>
-                <div className="flex gap-2">
-                    <button onClick={handleCopyJson} className="bg-blue-900 px-3 py-1 rounded hover:bg-blue-800 text-xs font-mono">COPY JSON</button>
-                    <button onClick={handleDownloadJson} className="bg-blue-700 px-3 py-1 rounded hover:bg-blue-600 text-xs font-mono">DOWNLOAD</button>
-                    <button onClick={handleTestPlay} className="bg-green-700 px-4 py-1 rounded hover:bg-green-600 font-bold text-xs">TEST LEVEL</button>
+                
+                {/* Level List */}
+                <div className="flex-1 overflow-y-auto border-b border-[#333] p-2 flex flex-col gap-1 max-h-[40vh]">
+                    {campaignLevels.map((lvl, idx) => (
+                        <div 
+                            key={lvl.internalId}
+                            onClick={() => handleSwitchLevel(idx)}
+                            className={`
+                                flex items-center justify-between px-3 py-2 rounded cursor-pointer text-xs
+                                ${currentLevelIndex === idx ? 'bg-blue-900 text-white' : 'hover:bg-[#333] text-gray-400'}
+                            `}
+                        >
+                            <span className="truncate flex-1">{idx}: {idx === currentLevelIndex ? levelName : lvl.levelName}</span>
+                            <button 
+                                onClick={(e) => handleDeleteLevel(idx, e)}
+                                className="text-gray-600 hover:text-red-500 ml-2"
+                            >
+                                x
+                            </button>
+                        </div>
+                    ))}
+                    <button onClick={handleAddLevel} className="mt-2 text-xs text-green-500 hover:text-green-400 border border-green-900 rounded py-1 bg-green-900/20">
+                        + NEW LEVEL
+                    </button>
                 </div>
-            </div>
 
-            <div className="flex-1 flex overflow-hidden">
-                {/* Tools Sidebar */}
-                <div className="w-48 bg-[#1a1a1a] flex flex-col p-2 gap-2 border-r border-[#333] overflow-y-auto">
-                    <div className="text-xs text-gray-500 font-bold mb-1 uppercase">Tools</div>
+                {/* Tools */}
+                <div className="flex-1 overflow-y-auto p-2 gap-2 flex flex-col bg-[#161616]">
+                    <div className="text-xs text-gray-500 font-bold mb-1 uppercase">Object Tools</div>
                     <ToolButton label="Select / Move" active={activeTool === null} onClick={() => setActiveTool(null)} />
                     <ToolButton label="Platform" active={activeTool === 'platform'} onClick={() => setActiveTool('platform')} />
                     <ToolButton label="Box" active={activeTool === 'box'} onClick={() => setActiveTool('box')} />
@@ -350,15 +701,39 @@ export const MapEditor: React.FC<MapEditorProps> = ({ initialState, onBack, onPl
                     <ToolButton label="Exit Portal" active={activeTool === 'exit'} onClick={() => setActiveTool('exit')} />
                     <ToolButton label="Info Point" active={activeTool === 'info'} onClick={() => setActiveTool('info')} />
                     
-                    <div className="mt-4 text-xs text-gray-500 font-bold mb-1 uppercase">Enemies</div>
+                    <div className="mt-2 text-xs text-gray-500 font-bold mb-1 uppercase">Enemies</div>
                     <ToolButton label="Basic" active={activeTool === 'enemy' && toolSubType === 'triangle_basic'} onClick={() => { setActiveTool('enemy'); setToolSubType('triangle_basic'); }} />
                     <ToolButton label="Hunter" active={activeTool === 'enemy' && toolSubType === 'triangle_hunter'} onClick={() => { setActiveTool('enemy'); setToolSubType('triangle_hunter'); }} />
                     <ToolButton label="Heavy" active={activeTool === 'enemy' && toolSubType === 'triangle_heavy'} onClick={() => { setActiveTool('enemy'); setToolSubType('triangle_heavy'); }} />
                     <ToolButton label="Ranged" active={activeTool === 'enemy' && toolSubType === 'triangle_ranged'} onClick={() => { setActiveTool('enemy'); setToolSubType('triangle_ranged'); }} />
                     <ToolButton label="Rapid" active={activeTool === 'enemy' && toolSubType === 'triangle_rapid'} onClick={() => { setActiveTool('enemy'); setToolSubType('triangle_rapid'); }} />
                 </div>
+            </div>
 
-                {/* Main Canvas Area */}
+            {/* MAIN AREA */}
+            <div className="flex-1 flex flex-col min-w-0">
+                
+                {/* Top Bar */}
+                <div className="h-12 bg-[#111] flex items-center justify-between px-4 border-b border-[#333] shrink-0">
+                    <div className="flex items-center gap-4 min-w-0">
+                        <span className="text-gray-500 text-xs font-mono">ID:{gameLevelId}</span>
+                        <input 
+                            className="bg-transparent border-b border-gray-500 text-white font-bold focus:outline-none w-48" 
+                            value={levelName}
+                            onChange={(e) => setLevelName(e.target.value)}
+                        />
+                    </div>
+                    <div className="flex gap-2 items-center">
+                        <button onClick={handleDownloadCampaign} className="bg-purple-700 px-3 py-1 rounded hover:bg-purple-600 text-xs font-bold whitespace-nowrap">
+                            DOWNLOAD CAMPAIGN
+                        </button>
+                        <button onClick={handleTestPlay} className="bg-green-700 px-4 py-1 rounded hover:bg-green-600 font-bold text-xs whitespace-nowrap">
+                            TEST LEVEL
+                        </button>
+                    </div>
+                </div>
+
+                {/* Canvas */}
                 <div className="flex-1 bg-[#333] overflow-auto relative cursor-crosshair" 
                      ref={canvasRef}
                      onMouseMove={handleMouseMove}
@@ -371,88 +746,93 @@ export const MapEditor: React.FC<MapEditorProps> = ({ initialState, onBack, onPl
                             height: mapSize.h * TILE_SIZE,
                             backgroundImage: 'linear-gradient(#ccc 1px, transparent 1px), linear-gradient(90deg, #ccc 1px, transparent 1px)',
                             backgroundSize: `${TILE_SIZE}px ${TILE_SIZE}px`,
-                            pointerEvents: isDragging ? 'none' : 'auto' // Prevent grid clicks when dragging
+                            pointerEvents: isDragging ? 'none' : 'auto' 
                         }}
                         onClick={handleCanvasClick}
                     >
                         {objects.map(renderObject)}
                     </div>
                 </div>
+            </div>
 
-                {/* Properties Panel */}
-                <div className="w-64 bg-[#1a1a1a] border-l border-[#333] p-4 flex flex-col gap-4">
-                    <div className="text-xs text-gray-500 font-bold uppercase">Properties</div>
-                    
-                    {selectedObject ? (
-                        <div className="flex flex-col gap-3">
-                            <div className="text-sm font-bold text-white uppercase border-b border-gray-700 pb-2">
-                                {selectedObject.type} <span className="text-xs text-gray-500">#{selectedObject.id.split('_').pop()}</span>
-                            </div>
-                            
-                            <PropInput label="X" value={selectedObject.x} onChange={v => updateObject(selectedObject.id, { x: Number(v) })} />
-                            <PropInput label="Y" value={selectedObject.y} onChange={v => updateObject(selectedObject.id, { y: Number(v) })} />
-
-                            {(selectedObject.type === 'platform' || selectedObject.type === 'info') && (
-                                <PropInput label="Width (Tiles)" value={selectedObject.w || 1} onChange={v => updateObject(selectedObject.id, { w: Number(v) })} />
-                            )}
-                            
-                            {selectedObject.type === 'platform' && (
-                                <PropInput label="Height (Tiles)" value={selectedObject.h || 1} onChange={v => updateObject(selectedObject.id, { h: Number(v) })} />
-                            )}
-
-                             {selectedObject.type === 'door' && (
-                                <>
-                                    <PropInput label="Height" value={selectedObject.h || 3} onChange={v => updateObject(selectedObject.id, { h: Number(v) })} />
-                                    <PropText label="Door ID" value={selectedObject.linkId || ''} onChange={v => updateObject(selectedObject.id, { linkId: v })} />
-                                </>
-                            )}
-                             {selectedObject.type === 'button' && (
-                                <>
-                                    <PropText label="Link To Door ID" value={selectedObject.linkTo || ''} onChange={v => updateObject(selectedObject.id, { linkTo: v })} />
-                                    <div className="flex flex-col gap-1">
-                                        <label className="text-[10px] text-gray-500 uppercase">Behavior</label>
-                                        <select 
-                                            className="bg-[#111] border border-[#444] rounded px-2 py-1 text-sm text-white focus:border-white outline-none"
-                                            value={selectedObject.behavior || 'once'}
-                                            onChange={(e) => updateObject(selectedObject.id, { behavior: e.target.value as 'hold' | 'once' })}
-                                        >
-                                            <option value="once">ONCE (Permanent)</option>
-                                            <option value="hold">HOLD (Needs Pressure)</option>
-                                        </select>
-                                    </div>
-                                </>
-                            )}
-                            
-                            {selectedObject.type === 'info' && (
-                                <div className="flex flex-col gap-1">
-                                    <label className="text-[10px] text-gray-500 uppercase">Message</label>
-                                    <textarea 
-                                        className="bg-[#111] border border-[#444] rounded px-2 py-1 text-sm text-white focus:border-white outline-none h-20"
-                                        value={selectedObject.text || ''}
-                                        onChange={(e) => updateObject(selectedObject.id, { text: e.target.value })}
-                                    />
-                                </div>
-                            )}
-
-                            {selectedObject.type === 'enemy' && (
-                                <>
-                                    <div className="text-xs text-orange-400 mt-2 font-bold">Combat Stats</div>
-                                    <PropInput label="HP" value={selectedObject.hp || 1} onChange={v => updateObject(selectedObject.id, { hp: Number(v) })} />
-                                    <PropInput label="Speed" value={selectedObject.speed || 100} onChange={v => updateObject(selectedObject.id, { speed: Number(v) })} />
-                                </>
-                            )}
-
-                            <button onClick={deleteSelected} className="bg-red-900 text-red-200 py-2 rounded mt-4 text-xs font-bold hover:bg-red-800">DELETE OBJECT</button>
+            {/* RIGHT PROPERTIES PANEL */}
+            <div className="w-64 bg-[#1a1a1a] border-l border-[#333] p-4 flex flex-col gap-4 shrink-0 overflow-y-auto">
+                <div className="text-xs text-gray-500 font-bold uppercase">Properties</div>
+                
+                {selectedObject ? (
+                    <div className="flex flex-col gap-3">
+                        <div className="text-sm font-bold text-white uppercase border-b border-gray-700 pb-2">
+                            {selectedObject.type} <span className="text-xs text-gray-500">#{selectedObject.id.split('_').pop()}</span>
                         </div>
-                    ) : (
-                        <div className="text-gray-600 text-sm italic">Select an object to edit properties.</div>
-                    )}
+                        
+                        <PropInput label="X" value={selectedObject.x} onChange={v => updateObject(selectedObject.id, { x: Number(v) })} />
+                        <PropInput label="Y" value={selectedObject.y} onChange={v => updateObject(selectedObject.id, { y: Number(v) })} />
 
-                    <div className="mt-auto border-t border-gray-800 pt-4">
-                        <div className="text-xs text-gray-500 font-bold uppercase mb-2">Map Settings</div>
-                         <PropInput label="Map Width" value={mapSize.w} onChange={v => setMapSize({ ...mapSize, w: Number(v) })} />
-                         <PropInput label="Map Height" value={mapSize.h} onChange={v => setMapSize({ ...mapSize, h: Number(v) })} />
+                        {(selectedObject.type === 'platform' || selectedObject.type === 'info') && (
+                            <PropInput label="Width (Tiles)" value={selectedObject.w || 1} onChange={v => updateObject(selectedObject.id, { w: Number(v) })} />
+                        )}
+                        
+                        {selectedObject.type === 'platform' && (
+                            <PropInput label="Height (Tiles)" value={selectedObject.h || 1} onChange={v => updateObject(selectedObject.id, { h: Number(v) })} />
+                        )}
+
+                            {selectedObject.type === 'door' && (
+                            <>
+                                <PropInput label="Height" value={selectedObject.h || 3} onChange={v => updateObject(selectedObject.id, { h: Number(v) })} />
+                                <PropText label="Door ID" value={selectedObject.linkId || ''} onChange={v => updateObject(selectedObject.id, { linkId: v })} />
+                            </>
+                        )}
+                            {selectedObject.type === 'button' && (
+                            <>
+                                <PropText label="Link To Door ID" value={selectedObject.linkTo || ''} onChange={v => updateObject(selectedObject.id, { linkTo: v })} />
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-[10px] text-gray-500 uppercase">Behavior</label>
+                                    <select 
+                                        className="bg-[#111] border border-[#444] rounded px-2 py-1 text-sm text-white focus:border-white outline-none"
+                                        value={selectedObject.behavior || 'once'}
+                                        onChange={(e) => updateObject(selectedObject.id, { behavior: e.target.value as 'hold' | 'once' })}
+                                    >
+                                        <option value="once">ONCE (Permanent)</option>
+                                        <option value="hold">HOLD (Needs Pressure)</option>
+                                    </select>
+                                </div>
+                            </>
+                        )}
+                        
+                        {selectedObject.type === 'info' && (
+                            <div className="flex flex-col gap-1">
+                                <label className="text-[10px] text-gray-500 uppercase">Message</label>
+                                <textarea 
+                                    className="bg-[#111] border border-[#444] rounded px-2 py-1 text-sm text-white focus:border-white outline-none h-20"
+                                    value={selectedObject.text || ''}
+                                    onChange={(e) => updateObject(selectedObject.id, { text: e.target.value })}
+                                />
+                            </div>
+                        )}
+                        
+                        {selectedObject.type === 'exit' && (
+                             <PropText label="Target Level ID" value={selectedObject.linkTo || ''} onChange={v => updateObject(selectedObject.id, { linkTo: v })} />
+                        )}
+
+                        {selectedObject.type === 'enemy' && (
+                            <>
+                                <div className="text-xs text-orange-400 mt-2 font-bold">Combat Stats</div>
+                                <PropInput label="HP" value={selectedObject.hp || 1} onChange={v => updateObject(selectedObject.id, { hp: Number(v) })} />
+                                <PropInput label="Speed" value={selectedObject.speed || 100} onChange={v => updateObject(selectedObject.id, { speed: Number(v) })} />
+                            </>
+                        )}
+
+                        <button onClick={deleteSelected} className="bg-red-900 text-red-200 py-2 rounded mt-4 text-xs font-bold hover:bg-red-800">DELETE OBJECT (DEL)</button>
                     </div>
+                ) : (
+                    <div className="text-gray-600 text-sm italic">Select an object to edit properties.</div>
+                )}
+
+                <div className="mt-auto border-t border-gray-800 pt-4">
+                    <div className="text-xs text-gray-500 font-bold uppercase mb-2">Map Settings</div>
+                        <PropInput label="Level ID" value={gameLevelId} onChange={v => setGameLevelId(Number(v))} />
+                        <PropInput label="Map Width" value={mapSize.w} onChange={v => setMapSize({ ...mapSize, w: Number(v) })} />
+                        <PropInput label="Map Height" value={mapSize.h} onChange={v => setMapSize({ ...mapSize, h: Number(v) })} />
                 </div>
             </div>
         </div>

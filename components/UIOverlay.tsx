@@ -11,6 +11,7 @@ interface UIOverlayProps {
     activeInputs: Set<string>;
     onInputStart: (input: string) => void;
     onInputEnd: (input: string) => void;
+    onSettings: () => void;
 }
 
 const ArrowLeftIcon = () => (
@@ -40,7 +41,13 @@ const FireIcon = () => (
 
 const KeyIcon = () => (
     <svg viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
-        <path d="M21 10h-8.35A5.99 5.99 0 0 0 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6a5.99 5.99 0 0 0 5.65-4H17v4h4v-4h2v-4zM7 15c-1.65 0-3-1.35-3-3s1.35-3 3-3 3 1.35 3 3-1.35 3-3 3z"/>
+        <path d="M21 10h-8.35A5.99 5.99 0 0 0 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6a5.99 5.99 0 0 0 5.65-4H17v4h4v-4h2v-4zM7 15c-1.65 0-3-1.35-3-3s1.35-3 3-3 3 1.35 3-3 3z"/>
+    </svg>
+);
+
+const SettingsIcon = () => (
+    <svg viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
+        <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.04.17 0 .36.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.04-.22 0-.45-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
     </svg>
 );
 
@@ -125,7 +132,8 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
     onQuit,
     activeInputs,
     onInputStart,
-    onInputEnd
+    onInputEnd,
+    onSettings
 }) => {
     
     const [isTouchDevice, setIsTouchDevice] = useState(false);
@@ -191,6 +199,12 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
                         className="py-3 border-2 border-white text-white font-bold hover:bg-white hover:text-black transition-all uppercase tracking-wider text-sm"
                     >
                         Resume
+                    </button>
+                    <button 
+                        onClick={onSettings}
+                        className="py-3 border-2 border-gray-400 text-gray-400 font-bold hover:border-white hover:text-white transition-all uppercase tracking-wider text-sm"
+                    >
+                        Settings
                     </button>
                     <button 
                         onClick={onRestart}
@@ -283,6 +297,14 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
                             </div>
                         )}
 
+                         <button 
+                            onClick={onSettings}
+                            className="pointer-events-auto p-2 px-3 border-2 border-black text-black font-bold hover:bg-black hover:text-white transition-colors bg-white/50 backdrop-blur-sm shadow-md"
+                            aria-label="Settings"
+                        >
+                            <SettingsIcon />
+                        </button>
+
                         <button 
                             onClick={onPauseToggle} 
                             className="pointer-events-auto p-2 px-3 border-2 border-black text-black font-bold hover:bg-black hover:text-white transition-colors bg-white/50 backdrop-blur-sm shadow-md"
@@ -311,7 +333,7 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
 
             {/* INFO TEXT - Moved to TOP and made smaller */}
             <div 
-                className={`absolute top-20 w-full text-center pointer-events-none z-[60] transition-all duration-700 transform ${
+                className={`absolute top-12 w-full text-center pointer-events-none z-[60] transition-all duration-700 transform ${
                     gameState.activeInfo ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'
                 }`}
             >

@@ -1,0 +1,68 @@
+{
+  "id": 0,
+  "name": "Hello",
+  "map": {
+    "size": {
+      "w": 80,
+      "h": 25
+    },
+    "platforms": [
+      {
+        "x": 3,
+        "y": 11,
+        "w": 16,
+        "h": 1
+      },
+      {
+        "x": 26,
+        "y": 11,
+        "w": 11,
+        "h": 1
+      },
+      {
+        "x": 47,
+        "y": 11,
+        "w": 16,
+        "h": 1
+      }
+    ]
+  },
+  "enemies": [],
+  "boxes": [],
+  "doors": [],
+  "buttons": [],
+  "infoPoints": [
+    {
+      "x": 14,
+      "w": 12,
+      "text": "Hold down to jump high"
+    },
+    {
+      "x": 32,
+      "w": 16,
+      "text": "Double-clicking allows you to perform a double jump."
+    }
+  ],
+  "items": [
+    {
+      "weapon": "light_gun"
+    }
+  ],
+  "hasKey": false,
+  "portalPos": {
+    "x": 60,
+    "y": 9
+  },
+  "checkpoints": [
+    {
+      "x": 4,
+      "y": 10
+    }
+  ],
+  "exit": {
+    "to": 1
+  },
+  "ending": {
+    "message": "Custom Level Complete"
+  }
+}

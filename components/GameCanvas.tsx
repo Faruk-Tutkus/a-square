@@ -2,10 +2,11 @@ import React, { useRef, useEffect } from 'react';
 import Phaser from 'phaser';
 import { GAME_DATA } from '../constants';
 import { LevelConfig } from '../types';
+import { AudioEngine } from '../audio';
 
 interface GameCanvasProps {
     currentLevelId: number;
-    levelDataOverride?: LevelConfig; // Support for custom level data from Editor
+    levelDataOverride?: LevelConfig;
     isPaused: boolean;
     activeInputs: Set<string>;
     currentAmmo: number;
@@ -125,73 +126,78 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 g.fillRect(0, 0, 32, 2); 
                 g.generateTexture('platform', 32, 32);
 
-                // ENEMY BASIC
+                // ENEMY BASIC (Increased to 40x40)
                 g.clear();
                 g.fillStyle(0x222222);
                 g.beginPath();
-                g.moveTo(16, 0);
-                g.lineTo(32, 32);
-                g.lineTo(0, 32);
+                g.moveTo(20, 0);
+                g.lineTo(40, 40);
+                g.lineTo(0, 40);
                 g.closePath();
                 g.fillPath();
-                g.generateTexture('enemy_basic', 32, 32);
+                g.generateTexture('enemy_basic', 40, 40);
 
-                // ENEMY RANGED
+                // ENEMY RANGED (Increased to 40x40)
                 g.clear();
                 g.fillStyle(0x222222); 
                 g.beginPath();
-                g.moveTo(16, 0);
-                g.lineTo(32, 32);
-                g.lineTo(0, 32);
+                g.moveTo(20, 0);
+                g.lineTo(40, 40);
+                g.lineTo(0, 40);
                 g.closePath();
                 g.fillPath();
                 g.fillStyle(0x00FFFF); // Cyan Eye
-                g.fillCircle(16, 16, 5); 
-                g.generateTexture('enemy_ranged', 32, 32);
+                g.fillCircle(20, 20, 6); 
+                g.generateTexture('enemy_ranged', 40, 40);
 
-                // ENEMY RAPID (Orange)
+                // ENEMY RAPID (Color changed to Red)
                 g.clear();
-                g.fillStyle(0x222222);
+                g.fillStyle(0xCC0000); // Red Body
                 g.beginPath();
-                g.moveTo(16, 0);
-                g.lineTo(32, 32);
-                g.lineTo(0, 32);
+                g.moveTo(20, 0);
+                g.lineTo(40, 40);
+                g.lineTo(0, 40);
                 g.closePath();
                 g.fillPath();
-                g.fillStyle(0xFFA500); // Orange Eye
-                g.fillCircle(16, 16, 5);
-                g.lineStyle(2, 0xFFA500);
+                g.fillStyle(0xFFFFFF); // White Eye contrast
+                g.fillCircle(20, 20, 6);
+                g.lineStyle(2, 0xFFFFFF);
                 g.beginPath();
-                g.moveTo(16, 0);
-                g.lineTo(16, 10); // Antenna
+                g.moveTo(20, 0);
+                g.lineTo(20, 10); // Antenna
                 g.strokePath();
-                g.generateTexture('enemy_rapid', 32, 32);
+                g.generateTexture('enemy_rapid', 40, 40);
 
-                // ENEMY HUNTER
+                // ENEMY HUNTER (Increased to 40x40)
                 g.clear();
                 g.fillStyle(0x222222);
                 g.beginPath();
-                g.moveTo(16, 0);
-                g.lineTo(32, 32);
-                g.lineTo(0, 32);
+                g.moveTo(20, 0);
+                g.lineTo(40, 40);
+                g.lineTo(0, 40);
                 g.closePath();
                 g.fillPath();
                 g.fillStyle(0xFFFFFF);
-                g.fillCircle(16, 18, 6);
+                g.fillCircle(20, 22, 7);
                 g.fillStyle(0xFF0000); 
-                g.fillCircle(16, 18, 2);
-                g.generateTexture('enemy_hunter', 32, 32);
+                g.fillCircle(20, 22, 3);
+                g.generateTexture('enemy_hunter', 40, 40);
 
-                // ENEMY HEAVY
+                // ENEMY HEAVY (Increased to 64x64, added eye)
                 g.clear();
                 g.fillStyle(0x0a0a0a);
                 g.beginPath();
-                g.moveTo(24, 0); 
-                g.lineTo(48, 48);
-                g.lineTo(0, 48);
+                g.moveTo(32, 0); 
+                g.lineTo(64, 64);
+                g.lineTo(0, 64);
                 g.closePath();
                 g.fillPath();
-                g.generateTexture('enemy_heavy', 48, 48);
+                // Heavy Eye
+                g.fillStyle(0x550000);
+                g.fillCircle(32, 35, 10);
+                g.fillStyle(0xFF0000);
+                g.fillCircle(32, 35, 4);
+                g.generateTexture('enemy_heavy', 64, 64);
 
                 // BOX
                 g.clear();
@@ -257,9 +263,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 g.fillCircle(5, 5, 5);
                 g.generateTexture('enemy_bullet_ranged', 10, 10);
                 
-                // Bullet Rapid
+                // Bullet Rapid (Changed to Red)
                 g.clear();
-                g.fillStyle(0xFFA500);
+                g.fillStyle(0xFF0000); 
                 g.fillRect(0, 0, 8, 4);
                 g.generateTexture('enemy_bullet_rapid', 8, 4);
 
@@ -306,6 +312,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 const mapWidth = (this.levelData.map.size.w * 32) + 400; 
                 const mapHeight = this.levelData.map.size.h * 32;
                 this.physics.world.setBounds(0, 0, mapWidth, mapHeight + 200);
+                
+                // Disable collision on bottom so things fall out
+                this.physics.world.setBoundsCollision(true, true, true, false);
 
                 this.cameras.main.setBounds(0, 0, mapWidth, mapHeight + 200);
                 this.cameras.main.setZoom(0.60); 
@@ -315,7 +324,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 this.platforms = this.physics.add.staticGroup();
                 this.levelData.map.platforms.forEach((p: any) => {
                     const w = p.w * 32;
-                    const h = (p.h || 1) * 32; // Updated to use variable height (default 1 block)
+                    const h = (p.h || 1) * 32;
                     const x = (p.x * 32) + (w / 2);
                     const y = (p.y * 32) + (h / 2);
                     
@@ -331,8 +340,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                         const h = (d.h || 3) * 32;
                         const w = 16;
                         const x = d.x * 32;
-                        // Added +32 to align the door bottom with the bottom of the grid cell
-                        // This ensures it sits flush on top of platforms placed on the row below
                         const topY = ((d.y + 1) * 32) - h; 
                         
                         const door = this.doors.create(x, topY, 'door_closed');
@@ -344,6 +351,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                         door.setData('maxHeight', h);
                         door.setData('currentHeight', h);
                         door.setData('width', w);
+                        door.setData('isMoving', false); // Track movement state
                     });
                 }
 
@@ -354,7 +362,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 });
                 if (this.levelData.buttons) {
                     this.levelData.buttons.forEach((b: any) => {
-                        // FIXED: Button sits at bottom of grid cell to match editor visual
                         const btnY = (b.y * 32) + 32; 
                         const btn = this.buttons.create(b.x * 32, btnY, 'button_up');
                         btn.setOrigin(0.5, 1); 
@@ -366,6 +373,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                         btn.setData('linkTo', b.linkToDoorId);
                         btn.setData('behavior', b.behavior || 'hold');
                         btn.setData('isPressed', false);
+                        btn.setData('wasPressed', false); // Track previous state for sound logic
                         btn.setData('permanentState', false);
                     });
                 }
@@ -373,11 +381,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 // PORTAL
                 let exitX, exitY;
                 if (this.levelData.portalPos) {
-                     // Custom portal position from editor
                      exitX = (this.levelData.portalPos.x * 32); 
                      exitY = (this.levelData.portalPos.y * 32);
                 } else {
-                     // Auto-calc fallback
                      exitX = (this.levelData.map.size.w - 2) * 32;
                      const lastPlat = this.levelData.map.platforms[this.levelData.map.platforms.length - 1];
                      exitY = (lastPlat ? lastPlat.y * 32 : 300) - 50;
@@ -515,21 +521,28 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 if (this.levelData.enemies) {
                     this.levelData.enemies.forEach((e: any) => {
                         let spawnY = 0;
-                        const platform = this.levelData.map.platforms.find((p: any) => {
-                             return e.x >= p.x && e.x <= (p.x + p.w);
-                        });
-
-                        if (platform) {
-                            spawnY = (platform.y * 32) - 48; 
+                        if (e.y !== undefined) {
+                            // If explicit Y provided, use center of tile
+                            spawnY = (e.y * 32) + 16;
                         } else {
-                            spawnY = 5 * 32;
+                            // Auto-snap to platform below X
+                            const platform = this.levelData.map.platforms.find((p: any) => {
+                                 return e.x >= p.x && e.x <= (p.x + p.w);
+                            });
+
+                            if (platform) {
+                                spawnY = (platform.y * 32) - 48; 
+                            } else {
+                                spawnY = 5 * 32;
+                            }
                         }
 
                         let typeKey = 'enemy_basic';
-                        let width = 32;
-                        let height = 32;
+                        let width = 40; // Increased size
+                        let height = 40;
                         let hp = 1;
                         let speed = 100;
+                        let mass = 1;
 
                         if (e.type === 'triangle_hunter') {
                              typeKey = 'enemy_hunter';
@@ -541,10 +554,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                         }
                         if (e.type === 'triangle_heavy') {
                             typeKey = 'enemy_heavy';
-                            width = 48;
-                            height = 48;
+                            width = 64; // Increased size
+                            height = 64;
                             hp = 5; 
-                            speed = 80; 
+                            speed = 80;
+                            mass = 2000; // MASSIVE
                         }
                         if (e.type === 'triangle_rapid') {
                             typeKey = 'enemy_rapid';
@@ -564,15 +578,25 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                         enemy.setBounce(0);
                         enemy.setGravityY(GRAVITY);
                         enemy.setPushable(false); 
+                        enemy.setMass(mass);
+                        
+                        // Increase drag for heavy enemy to stop it sliding
+                        if (e.type === 'triangle_heavy') {
+                             enemy.setDragX(1000);
+                        }
                         
                         enemy.setData('type', e.type);
                         enemy.setData('hp', hp);
                         enemy.setData('baseSpeed', speed);
                         enemy.setData('speed', speed);
-                        enemy.setData('dir', 1); 
+                        enemy.setData('dir', -1); // Start facing LEFT
                         enemy.setData('alerted', false);
                         enemy.setData('lastFired', 0);
-                        enemy.setVelocityX(speed); 
+                        enemy.setData('canJump', true);
+                        enemy.setData('jumpTimer', 0);
+                        enemy.setData('turnTimer', 0); 
+                        enemy.setData('currentJumps', 0); // For double jump logic
+                        enemy.setVelocityX(-speed); // Start moving LEFT
                     });
                 }
 
@@ -594,16 +618,77 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 this.physics.add.collider(this.player, this.platforms, this.handleLand, undefined, this);
                 this.physics.add.collider(this.enemies, this.platforms);
                 this.physics.add.collider(this.boxes, this.platforms);
-                this.physics.add.collider(this.boxes, this.enemies); 
+                
+                // Enemy vs Box/Enemy - Make them turn on collision
+                this.physics.add.collider(this.boxes, this.enemies, (box, enemy) => {
+                    const e = enemy as Phaser.Physics.Arcade.Sprite;
+                    
+                    // Don't flip if standing on top of box
+                    if (e.body.touching.down) return;
+
+                    const type = e.getData('type');
+                    // Hunter shouldn't turn on box collision if alerted, so it can jump over
+                    if ((type === 'triangle_hunter' || type === 'enemy_hunter') && e.getData('alerted')) {
+                        return;
+                    }
+
+                    // Reverse direction on collision with box
+                    const currentDir = e.getData('dir');
+                    if (this.time.now > e.getData('turnTimer')) {
+                        e.setData('dir', -currentDir);
+                        e.setData('turnTimer', this.time.now + 200);
+                    }
+                }); 
+                
+                // FIXED ENEMY-ENEMY COLLISION TO PREVENT STICKING
+                this.physics.add.collider(this.enemies, this.enemies, (e1, e2) => {
+                     const en1 = e1 as Phaser.Physics.Arcade.Sprite;
+                     const en2 = e2 as Phaser.Physics.Arcade.Sprite;
+                     
+                     // Force separation based on position
+                     if (en1.x < en2.x) {
+                         en1.setData('dir', -1);
+                         en2.setData('dir', 1);
+                         en1.x -= 2; // Nudge apart
+                         en2.x += 2;
+                     } else {
+                         en1.setData('dir', 1);
+                         en2.setData('dir', -1);
+                         en1.x += 2;
+                         en2.x -= 2;
+                     }
+                     
+                     // Add cooldown to prevent immediate re-flip
+                     const now = this.time.now;
+                     en1.setData('turnTimer', now + 300);
+                     en2.setData('turnTimer', now + 300);
+                     
+                     // Force velocity update immediately
+                     const s1 = en1.getData('speed');
+                     const s2 = en2.getData('speed');
+                     en1.setVelocityX(s1 * en1.getData('dir'));
+                     en2.setVelocityX(s2 * en2.getData('dir'));
+                });
+
                 this.physics.add.collider(this.player, this.doors); 
                 this.physics.add.collider(this.boxes, this.doors); 
-                this.physics.add.collider(this.enemies, this.doors);
+                this.physics.add.collider(this.enemies, this.doors, (e, d) => {
+                     const en = e as Phaser.Physics.Arcade.Sprite;
+                     const currentDir = en.getData('dir');
+                     if (this.time.now > en.getData('turnTimer')) {
+                         en.setData('dir', -currentDir);
+                         en.setData('turnTimer', this.time.now + 200);
+                     }
+                });
 
                 this.physics.add.overlap(this.player, this.buttons, (p, b) => {
-                    (b as Phaser.Physics.Arcade.Sprite).setData('isPressed', true);
+                    const btn = b as Phaser.Physics.Arcade.Sprite;
+                    // Only set pressed state here, do NOT play sound in loop
+                    btn.setData('isPressed', true);
                 });
                 this.physics.add.overlap(this.boxes, this.buttons, (box, b) => {
-                     (b as Phaser.Physics.Arcade.Sprite).setData('isPressed', true);
+                     const btn = b as Phaser.Physics.Arcade.Sprite;
+                     btn.setData('isPressed', true);
                 });
 
                 this.physics.add.collider(this.player, this.boxes, (player, box) => {
@@ -649,14 +734,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                     bullet.destroy();
                     this.handlePlayerHit();
                 });
-                this.physics.add.collider(this.enemyBullets, this.platforms, (bullet) => bullet.destroy());
+                // REMOVED COLLISION WITH PLATFORMS SO BULLETS PASS THROUGH
+                // this.physics.add.collider(this.enemyBullets, this.platforms, (bullet) => bullet.destroy());
                 this.physics.add.collider(this.enemyBullets, this.boxes, (bullet) => bullet.destroy());
                 this.physics.add.collider(this.enemyBullets, this.doors, (bullet) => bullet.destroy());
 
                 this.physics.add.overlap(this.player, this.keys, this.handleKeyCollect, undefined, this);
 
                 // CAMERA FOLLOW CONFIG
-                // Added offset to show more of the level in front of the player
                 this.cameras.main.startFollow(this.player, true, 0.08, 0.08, 0, 50);
 
                 if(this.input.keyboard) {
@@ -666,7 +751,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 }
             }
 
-            handleLand() { }
+            handleLand() { 
+                if(!this.wasOnFloor && this.player.body.touching.down) {
+                    AudioEngine.playSound('land');
+                }
+            }
 
             handleKeyCollect(player: any, key: any) {
                 key.destroy();
@@ -711,31 +800,44 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 enemy.setData('hp', hp);
 
                 this.particles.emitParticleAt(enemy.x, enemy.y, 5);
-                this.cameras.main.shake(50, 0.005);
+                
+                // Enemy Type Specific Hit Sounds
+                if (eType === 'triangle_heavy' || eType === 'enemy_heavy') {
+                    AudioEngine.playSound('hit_heavy');
+                } else {
+                    AudioEngine.playSound('hit_basic');
+                }
 
-                if (hp <= 0) {
-                    this.particles.emitParticleAt(enemy.x, enemy.y, 20);
-                    enemy.destroy();
+                // Heavy Enemy Enrage on Hit
+                if (eType === 'triangle_heavy' || eType === 'enemy_heavy') {
+                    if (hp > 0) {
+                         enemy.setTint(0xFF0000); 
+                         enemy.setData('alerted', true);
+                         
+                         // Force face player immediately
+                         const dx = this.player.x - enemy.x;
+                         enemy.setData('dir', dx > 0 ? 1 : -1);
+
+                         // Set fixed fast speed, don't increment to prevent flying
+                         enemy.setData('speed', 200); 
+                         
+                         // Heavy shake only on death or first hit? Reduced to avoid disorientation
+                         this.cameras.main.shake(30, 0.002);
+                    }
                 } else {
                     enemy.setTint(0xFF0000); 
+                    this.cameras.main.shake(50, 0.005);
                     this.time.delayedCall(100, () => enemy.clearTint());
-                    
-                    if (eType === 'triangle_heavy') {
-                        enemy.setData('alerted', true);
-                        const newScale = enemy.scaleX * 1.15;
-                        
-                        enemy.y -= 10; 
-                        enemy.setScale(newScale);
-                        enemy.refreshBody();
-                        
-                        const currentSpeed = enemy.getData('speed');
-                        enemy.setData('speed', currentSpeed + 30);
-                        this.cameras.main.shake(100, 0.01);
-                    }
-                    if (eType === 'triangle_ranged' || eType === 'triangle_rapid') {
-                        enemy.setData('alerted', true);
-                    }
                 }
+                
+                // Alert others on hit
+                enemy.setData('alerted', true);
+
+                if (hp <= 0) {
+                    AudioEngine.playSound('enemy_die');
+                    this.particles.emitParticleAt(enemy.x, enemy.y, 20);
+                    enemy.destroy();
+                } 
             }
 
             die() {
@@ -806,13 +908,26 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                     }
                 });
 
+                // ENEMY BULLET RANGE CHECK
+                this.enemyBullets.getChildren().forEach((b: any) => {
+                    if (b.getData('expiresAt') && time > b.getData('expiresAt')) {
+                        b.destroy();
+                    }
+                });
+
                 // BUTTON AND DOOR LOGIC
                 this.buttons.getChildren().forEach((child: any) => {
                     const btn = child as Phaser.Physics.Arcade.Sprite;
                     const isPressed = btn.getData('isPressed');
+                    const wasPressed = btn.getData('wasPressed');
                     const behavior = btn.getData('behavior');
                     const linkId = btn.getData('linkTo');
                     let isActive = isPressed;
+
+                    // Play Sound ONLY on rising edge (was not pressed -> is pressed)
+                    if (isPressed && !wasPressed) {
+                        AudioEngine.playSound('button');
+                    }
 
                     if (behavior === 'once') {
                         if (isPressed && !btn.getData('permanentState')) {
@@ -838,11 +953,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                                 const maxH = door.getData('maxHeight');
                                 const w = door.getData('width');
                                 let currentH = door.getData('currentHeight');
+                                const wasMoving = door.getData('isMoving');
+                                let isMoving = false;
 
                                 if (isActive) {
                                     if (currentH > 0) {
                                         currentH -= 6;
                                         if (currentH < 0) currentH = 0;
+                                        isMoving = true;
                                         
                                         door.setData('currentHeight', currentH);
                                         door.setDisplaySize(w, currentH);
@@ -862,16 +980,26 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                                     if (currentH < maxH) {
                                         currentH += 6;
                                         if (currentH > maxH) currentH = maxH;
+                                        isMoving = true;
                                         
                                         door.setData('currentHeight', currentH);
                                         door.setDisplaySize(w, currentH);
                                         door.refreshBody();
                                     }
                                 }
+
+                                // Play door sound on start of movement
+                                if(isMoving && !wasMoving) {
+                                    AudioEngine.playSound('door');
+                                }
+                                door.setData('isMoving', isMoving);
                             }
                         });
                     }
                     
+                    // Update 'wasPressed' for next frame comparison
+                    btn.setData('wasPressed', isPressed);
+                    // Reset 'isPressed' so physics overlap must re-trigger it next frame to stay true
                     btn.setData('isPressed', false);
                 });
 
@@ -913,6 +1041,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                     this.playerScaleX = 1.4;
                     this.playerScaleY = 0.6;
                     this.spawnDust(0, 4);
+                    AudioEngine.playSound('land');
                 }
                 this.wasOnFloor = onFloor;
 
@@ -945,6 +1074,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                     if (Math.random() > 0.8) { 
                         const offset = this.facingRight ? -14 : 14;
                         this.spawnDust(offset, 1);
+                        if(time % 400 < 20) AudioEngine.playSound('step'); // Rough step sound logic
                     }
                 }
 
@@ -966,6 +1096,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                         this.coyoteTimer = 0; 
                         this.jumpBufferTimer = 0; 
                         this.jumpCount = 1;
+                        AudioEngine.playSound('jump');
                     } 
                     else if (this.jumpCount < 2) {
                         this.player.setVelocityY(-JUMP_FORCE * 0.9);
@@ -974,6 +1105,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                         this.playerScaleY = 1.3;
                         this.jumpCount++;
                         this.jumpBufferTimer = 0;
+                        AudioEngine.playSound('jump');
                     }
                 }
 
@@ -1001,6 +1133,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                         
                         this.lastFired = time + 250; 
                         this.cameras.main.shake(40, 0.005); 
+                        AudioEngine.playSound('shoot');
                         
                         onAmmoConsumed();
                     }
@@ -1018,12 +1151,21 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                     }
                 });
 
-                // AI UPDATE
+                // ----------------------------------------------------------------
+                // ADVANCED ENEMY AI
+                // ----------------------------------------------------------------
                 this.enemies.getChildren().forEach((child: any) => {
                     const enemy = child as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;
-                    const distToPlayer = Phaser.Math.Distance.Between(this.player.x, this.player.y, enemy.x, enemy.y);
                     
-                    if (distToPlayer > 1000) {
+                    // KILL IF FALLEN OFF MAP
+                    if (enemy.y > this.physics.world.bounds.height + 50) {
+                        enemy.destroy();
+                        return;
+                    }
+                    
+                    // Optimization: Sleep if far away
+                    const distToPlayer = Phaser.Math.Distance.Between(this.player.x, this.player.y, enemy.x, enemy.y);
+                    if (distToPlayer > 1200) {
                         enemy.setVelocityX(0);
                         return;
                     }
@@ -1031,262 +1173,352 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                     const eType = enemy.getData('type');
                     let currentDir = enemy.getData('dir');
                     let currentSpeed = enemy.getData('speed');
-                    
+                    const isAlerted = enemy.getData('alerted');
+                    const isStunned = enemy.getData('isStunned');
+                    const turnTimer = enemy.getData('turnTimer') || 0;
+
+                    if (isStunned) {
+                        enemy.setVelocityX(0);
+                        enemy.setTint(0x555555);
+                        if (time > enemy.getData('stunEndTime')) {
+                            enemy.setData('isStunned', false);
+                            enemy.clearTint();
+                        }
+                        return; // Skip AI if stunned
+                    }
+
+                    // If currently in a forced turn (from collision), wait it out before AI takes over
+                    if (time < turnTimer) {
+                         return;
+                    }
+
+                    // Helper: Check if floor exists ahead
                     const checkFloorAhead = (direction: number) => {
-                        const lookAheadDist = (enemy.width / 2) + 10 + (currentSpeed * 0.2);
+                        const lookAheadDist = (enemy.width / 2) + 20;
                         const lookAheadX = enemy.x + (direction * lookAheadDist);
-                        const lookAheadY = enemy.y + (eType === 'triangle_heavy' ? 32 : 20); 
-                        return this.levelData.map.platforms.some((p: any) => {
-                             const pLeft = p.x * 32;
-                             const pRight = (p.x + p.w) * 32;
-                             const pTop = p.y * 32;
-                             return lookAheadX > pLeft && lookAheadX < pRight && Math.abs(lookAheadY - pTop) < 40;
+                        // Scan down to find platform
+                        const scanY = enemy.y + (enemy.height / 2) + 10;
+                        
+                        // Simple box overlap check with platforms
+                        return this.platforms.getChildren().some((plat: any) => {
+                             const p = plat as Phaser.Physics.Arcade.Sprite;
+                             const b = p.body;
+                             // Check if point (lookAheadX, scanY) is within platform bounds
+                             return lookAheadX >= b.x && lookAheadX <= b.right && scanY >= b.y && scanY <= b.bottom + 10;
                         });
                     };
+                    
+                    const isBlocked = enemy.body.blocked.left || enemy.body.blocked.right || enemy.body.touching.left || enemy.body.touching.right;
 
-                    if (eType === 'triangle_basic') {
-                        if (enemy.body.blocked.left || enemy.body.blocked.right || !checkFloorAhead(currentDir)) {
+                    // --- BASIC ENEMY ---
+                    if (eType === 'enemy_basic' || eType === 'triangle_basic') {
+                        if (isBlocked || !checkFloorAhead(currentDir)) {
                             currentDir *= -1; 
                             enemy.setData('dir', currentDir);
                         }
                         enemy.setVelocityX(currentSpeed * currentDir);
+                    }
 
-                    } else if (eType === 'triangle_ranged') {
-                        let isAlerted = enemy.getData('alerted');
-                        const distX = this.player.x - enemy.x;
-                        const distY = this.player.y - enemy.y;
-                        const detectionRange = 600; 
-
-                        if (Math.abs(distX) < detectionRange && Math.abs(distY) < 60) {
-                            if (!isAlerted) enemy.setData('alerted', true);
-                            isAlerted = true;
+                    // --- HUNTER (Jumper / Chaser) ---
+                    else if (eType === 'triangle_hunter' || eType === 'enemy_hunter') {
+                        const dx = this.player.x - enemy.x;
+                        const dy = this.player.y - enemy.y;
+                        const inDetectionRange = Math.abs(dx) < 400 && Math.abs(dy) < 100;
+                        
+                        // OMNIDIRECTIONAL DETECTION
+                        if (inDetectionRange && !this.isDead && !enemy.getData('alerted')) {
+                             enemy.setData('alerted', true);
+                             AudioEngine.playSound('alert_hunter');
                         }
 
-                        // Alignment check (Vertical)
-                        const alignedY = Math.abs(distY) < 20; 
-                        let canShoot = false;
+                        // Reset jumps if on floor
+                        if (enemy.body.touching.down) {
+                            enemy.setData('currentJumps', 0);
+                        }
 
-                        if (isAlerted && alignedY && !this.isDead) {
-                            // If aligned vertically, FORCE turn to player
-                            const targetDir = distX > 0 ? 1 : -1;
-                            if (currentDir !== targetDir) {
-                                currentDir = targetDir;
+                        if (enemy.getData('alerted')) {
+                            const chaseDir = dx > 0 ? 1 : -1;
+                            // Only switch direction if significant movement needed
+                            if (currentDir !== chaseDir && Math.abs(dx) > 20) {
+                                currentDir = chaseDir;
                                 enemy.setData('dir', currentDir);
                             }
-                            canShoot = true;
-                        }
-
-                        if (canShoot) {
-                            enemy.setVelocityX(0);
                             
-                            const lastShot = enemy.getData('lastFired');
-                            const fireCooldown = 1500;
-                            if (time > lastShot + fireCooldown) {
-                                const bullet = this.enemyBullets.get(enemy.x, enemy.y);
-                                if (bullet) {
-                                    bullet.setTexture('enemy_bullet_ranged');
-                                    bullet.setActive(true).setVisible(true);
-                                    bullet.setPosition(enemy.x + (currentDir * 20), enemy.y);
-                                    bullet.body.reset(enemy.x + (currentDir * 20), enemy.y);
-                                    bullet.setVelocityX(currentDir * 500); 
-                                    bullet.body.allowGravity = false;
-                                    enemy.setData('lastFired', time);
-                                    this.cameras.main.shake(20, 0.002);
-                                }
-                            }
-
-                        } else if (isAlerted) {
-                            const chaseDir = distX > 0 ? 1 : -1;
-                            if (Math.abs(distX) > 50) { 
-                                if (checkFloorAhead(chaseDir)) {
-                                    enemy.setVelocityX(currentSpeed * 1.5 * chaseDir);
-                                    enemy.setData('dir', chaseDir); 
-                                } else {
-                                    enemy.setVelocityX(0);
-                                    enemy.setData('dir', chaseDir);
-                                }
+                            // Move
+                            if (Math.abs(dx) > 10) {
+                                enemy.setVelocityX(currentSpeed * currentDir);
                             } else {
                                 enemy.setVelocityX(0);
                             }
 
-                        } else {
-                            // PATROL
-                            if (enemy.body.blocked.left || enemy.body.blocked.right || !checkFloorAhead(currentDir)) {
-                                currentDir *= -1; 
-                                enemy.setData('dir', currentDir);
-                            }
-                            enemy.setVelocityX(currentSpeed * currentDir);
-                        }
+                            // JUMP LOGIC
+                            // If blocked by wall OR (at edge of platform AND player is further ahead)
+                            const atEdge = !checkFloorAhead(currentDir);
+                            const safeToJump = dy < 100; 
 
-                    } else if (eType === 'triangle_rapid') {
-                        let isAlerted = enemy.getData('alerted');
-                        const distX = this.player.x - enemy.x;
-                        const distY = this.player.y - enemy.y;
-                        const detectionRange = 400;
+                            if ((isBlocked || atEdge) && safeToJump) {
+                                if (time > enemy.getData('jumpTimer')) {
+                                    const currentJumps = enemy.getData('currentJumps') || 0;
+                                    // Allow jump if on ground OR if we have jumps left (Double Jump)
+                                    // Logic: touching down = jump 1. In air and < 2 = jump 2.
+                                    if (enemy.body.touching.down || currentJumps < 2) {
+                                        enemy.setVelocityY(-700); // Higher vertical jump
+                                        
+                                        // BOOST X towards player for farther jump (3.0 multiplier)
+                                        const jumpDir = this.player.x > enemy.x ? 1 : -1;
+                                        enemy.setVelocityX(currentSpeed * 3.0 * jumpDir);
 
-                        if (Math.abs(distX) < detectionRange && Math.abs(distY) < 60) {
-                            if (!isAlerted) enemy.setData('alerted', true);
-                            isAlerted = true;
-                        }
-
-                        const facingPlayer = (currentDir === 1 && distX > 0) || (currentDir === -1 && distX < 0);
-                        const alignedY = Math.abs(distY) < 40;
-                        const canShoot = isAlerted && alignedY && facingPlayer && !this.isDead;
-
-                        if (canShoot) {
-                            enemy.setVelocityX(0);
-                            
-                            const lastShot = enemy.getData('lastFired');
-                            const fireCooldown = 2500; 
-                            
-                            if (time > lastShot + fireCooldown) {
-                                enemy.setData('lastFired', time);
-                                for(let i=0; i<3; i++) {
-                                    this.time.delayedCall(i * 150, () => {
-                                        if(!enemy.active) return;
-                                        const bullet = this.enemyBullets.get(enemy.x, enemy.y);
-                                        if (bullet) {
-                                            bullet.setTexture('enemy_bullet_rapid');
-                                            bullet.setActive(true).setVisible(true);
-                                            bullet.setPosition(enemy.x + (currentDir * 20), enemy.y);
-                                            bullet.body.reset(enemy.x + (currentDir * 20), enemy.y);
-                                            bullet.setVelocityX(currentDir * 550);
-                                            bullet.body.allowGravity = false;
-                                            this.cameras.main.shake(10, 0.001);
+                                        enemy.setData('jumpTimer', time + 400); // Debounce
+                                        
+                                        // Only increment jump counter if we are mid-air (doing the double jump)
+                                        // or starting the first jump
+                                        if (!enemy.body.touching.down) {
+                                             enemy.setData('currentJumps', currentJumps + 1);
+                                        } else {
+                                             // First jump from ground counts as 1
+                                             enemy.setData('currentJumps', 1);
                                         }
-                                    });
+                                        
+                                        this.spawnDust(0, 3);
+                                    }
                                 }
+                            }
+                        } else {
+                            // Patrol
+                            if (isBlocked || !checkFloorAhead(currentDir)) {
+                                currentDir *= -1; 
+                                enemy.setData('dir', currentDir);
+                            }
+                            enemy.setVelocityX(currentSpeed * 0.5 * currentDir);
+                        }
+                    }
+
+                    // --- RANGED (Sniper / Kiting) ---
+                    else if (eType === 'triangle_ranged' || eType === 'enemy_ranged') {
+                         const dx = this.player.x - enemy.x;
+                         const dy = this.player.y - enemy.y;
+                         const dist = Math.sqrt(dx*dx + dy*dy);
+                         
+                         // Detection
+                         if (dist < 500 && !isAlerted) {
+                             enemy.setData('alerted', true);
+                             AudioEngine.playSound('alert_generic');
+                         }
+
+                         if (enemy.getData('alerted')) {
+                             // Face player
+                             const targetDir = dx > 0 ? 1 : -1;
+                             enemy.setData('dir', targetDir);
+
+                             // KITING: If too close, run away
+                             if (Math.abs(dx) < 400) { // Increased distance from 200 to 400
+                                 // Check if we can run backwards
+                                 if (checkFloorAhead(-targetDir) && !enemy.body.blocked.left && !enemy.body.blocked.right) {
+                                     enemy.setVelocityX(-targetDir * currentSpeed * 0.95); // Slightly faster retreat
+                                 } else {
+                                     enemy.setVelocityX(0); // Cornered
+                                 }
+                             } else {
+                                 enemy.setVelocityX(0); // Stand still to shoot
+                             }
+
+                             // SHOOTING LOGIC
+                             if (dist < 600 && !this.isDead) {
+                                 const lastShot = enemy.getData('lastFired');
+                                 if (time > lastShot + 2000) {
+                                     // Fire
+                                     const angle = Phaser.Math.Angle.Between(enemy.x, enemy.y, this.player.x, this.player.y);
+                                     const bullet = this.enemyBullets.get(enemy.x, enemy.y);
+                                    if (bullet) {
+                                        bullet.setTexture('enemy_bullet_ranged');
+                                        bullet.setActive(true).setVisible(true);
+                                        bullet.setPosition(enemy.x, enemy.y);
+                                        bullet.body.reset(enemy.x, enemy.y);
+                                        
+                                        // Set Velocity based on angle
+                                        this.physics.velocityFromRotation(angle, 600, bullet.body.velocity);
+                                        bullet.rotation = angle;
+                                        
+                                        bullet.body.allowGravity = false;
+                                        bullet.setData('expiresAt', time + 1500); // Bullet dies after 1.5s
+                                        
+                                        enemy.setData('lastFired', time);
+                                        this.cameras.main.shake(30, 0.002);
+                                        AudioEngine.playSound('shoot'); // Enemy shoot sfx could be distinct, reusing shoot for now
+                                    }
+                                 }
+                             }
+
+                         } else {
+                             // Passive Idle or tiny patrol
+                             enemy.setVelocityX(0);
+                         }
+                    }
+
+                    // --- RAPID (Strafer) ---
+                    else if (eType === 'triangle_rapid' || eType === 'enemy_rapid') {
+                        const dx = this.player.x - enemy.x;
+                        const dy = this.player.y - enemy.y;
+                        const dist = Math.sqrt(dx*dx + dy*dy);
+
+                        if (dist < 450 && !isAlerted) {
+                            enemy.setData('alerted', true);
+                            AudioEngine.playSound('alert_generic');
+                        }
+
+                        if (enemy.getData('alerted')) {
+                            const targetDir = dx > 0 ? 1 : -1;
+                            enemy.setData('dir', targetDir);
+
+                            // STRAFING: Move randomly left/right to be annoying
+                            // Change strafe direction every 500ms
+                            if (!enemy.getData('strafeTimer') || time > enemy.getData('strafeTimer')) {
+                                const randomDir = Math.random() > 0.5 ? 1 : -1;
+                                enemy.setData('strafeDir', randomDir);
+                                enemy.setData('strafeTimer', time + 400);
+                            }
+
+                            const strafeDir = enemy.getData('strafeDir');
+                            if (checkFloorAhead(strafeDir) && !enemy.body.blocked.left && !enemy.body.blocked.right) {
+                                enemy.setVelocityX(strafeDir * currentSpeed);
+                            } else {
+                                enemy.setVelocityX(0);
+                            }
+
+                            // Shoot
+                            if (dist < 500 && !this.isDead) {
+                                const lastShot = enemy.getData('lastFired');
+                                if (time > lastShot + 2000) {
+                                    enemy.setData('lastFired', time);
+                                    // Triple Burst
+                                    for(let i=0; i<3; i++) {
+                                        this.time.delayedCall(i * 120, () => {
+                                            if(!enemy.active) return;
+                                            
+                                            // Recalculate angle per shot for tracking
+                                            const angle = Phaser.Math.Angle.Between(enemy.x, enemy.y, this.player.x, this.player.y);
+                                            
+                                            const bullet = this.enemyBullets.get(enemy.x, enemy.y);
+                                            if (bullet) {
+                                                bullet.setTexture('enemy_bullet_rapid');
+                                                bullet.setActive(true).setVisible(true);
+                                                bullet.setPosition(enemy.x, enemy.y);
+                                                bullet.body.reset(enemy.x, enemy.y);
+                                                
+                                                this.physics.velocityFromRotation(angle, 500, bullet.body.velocity);
+                                                bullet.rotation = angle;
+                                                
+                                                bullet.body.allowGravity = false;
+                                                bullet.setData('expiresAt', time + 1200); // Short range
+                                                AudioEngine.playSound('shoot');
+                                            }
+                                        });
+                                    }
+                                }
+                            }
+
+                        } else {
+                            if (isBlocked || !checkFloorAhead(currentDir)) {
+                                currentDir *= -1; 
+                                enemy.setData('dir', currentDir);
+                            }
+                            enemy.setVelocityX(currentSpeed * currentDir);
+                        }
+                    }
+
+                    // --- HEAVY (Charger) ---
+                    else if (eType === 'triangle_heavy' || eType === 'enemy_heavy') {
+                        const dx = this.player.x - enemy.x;
+                        const dy = this.player.y - enemy.y;
+
+                        // Check if we can charge (Cooldown + Distance + Line of Sight)
+                        const canCharge = time > (enemy.getData('chargeCooldown') || 0);
+                        
+                        // Line of Sight Trigger (Works even if already alerted if off cooldown)
+                        if (!enemy.getData('isCharging') && canCharge && Math.abs(dx) < 500 && Math.abs(dy) < 80) {
+                             if (!isAlerted) {
+                                 enemy.setData('alerted', true);
+                                 AudioEngine.playSound('alert_heavy');
+                             }
+                             
+                             // Stop to wind up
+                             enemy.setVelocityX(0);
+                             
+                             // Face player
+                             const dirToPlayer = dx > 0 ? 1 : -1;
+                             enemy.setData('dir', dirToPlayer);
+
+                             // Set cooldown to prevent spam during windup
+                             enemy.setData('chargeCooldown', time + 2000);
+
+                            // "Charging Up"
+                            this.tweens.add({
+                                targets: enemy,
+                                scaleX: 1.2,
+                                scaleY: 0.8,
+                                yoyo: true,
+                                duration: 100,
+                                repeat: 3,
+                                onComplete: () => {
+                                    if(enemy.active) {
+                                        enemy.setData('isCharging', true);
+                                        enemy.setTint(0xFF0000);
+                                    }
+                                }
+                            });
+                        }
+
+                        if (enemy.getData('isCharging')) {
+                            const chargeDir = enemy.getData('dir');
+                            
+                            // OVERSHOOT CHECK: If we passed the player, stop charging
+                            const passedPlayer = (chargeDir === 1 && dx < -40) || (chargeDir === -1 && dx > 40);
+
+                            if (passedPlayer) {
+                                // Stop Charge
+                                enemy.setData('isCharging', false);
+                                enemy.setData('chargeCooldown', time + 1500); // Wait 1.5s before next charge
+                                enemy.setVelocityX(0);
+                                enemy.clearTint();
+                            } else {
+                                // MOVE ONLY IF ON GROUND
+                                if (enemy.body.touching.down) {
+                                    // Jump if blocked or cliff
+                                    if (isBlocked || !checkFloorAhead(chargeDir)) {
+                                        enemy.setVelocityY(-550); // Jump!
+                                        // Set initial horizontal momentum for the jump
+                                        enemy.setVelocityX(currentSpeed * 1.5 * chargeDir); 
+                                        this.spawnDust(0, 5);
+                                    } else {
+                                        // Run on ground
+                                        enemy.setVelocityX(currentSpeed * 2.0 * chargeDir);
+                                    }
+                                }
+                                // IF IN AIR, DO NOT FORCE X VELOCITY (Let physics carry it)
                             }
 
                         } else if (isAlerted) {
-                            const chaseDir = distX > 0 ? 1 : -1;
-                             if (Math.abs(distX) > 100) { 
-                                if (checkFloorAhead(chaseDir)) {
-                                    enemy.setVelocityX(currentSpeed * 1.5 * chaseDir);
-                                    enemy.setData('dir', chaseDir); 
-                                } else {
-                                    enemy.setVelocityX(0);
-                                }
-                            } else if (Math.abs(distX) < 50) {
-                                enemy.setVelocityX(-currentSpeed * chaseDir);
-                            } else {
-                                enemy.setVelocityX(0);
-                            }
-                        } else {
-                            if (enemy.body.blocked.left || enemy.body.blocked.right || !checkFloorAhead(currentDir)) {
-                                currentDir *= -1; 
-                                enemy.setData('dir', currentDir);
-                            }
-                            enemy.setVelocityX(currentSpeed * currentDir);
-                        }
-
-                    } else if (eType === 'triangle_heavy') {
-                        let isAlerted = enemy.getData('alerted');
-                        const distX = this.player.x - enemy.x;
-                        const distY = this.player.y - enemy.y;
-                        
-                        if (!isAlerted && Math.abs(distX) < 300 && Math.abs(distY) < 80) {
-                            const facingPlayer = (currentDir === 1 && distX > 0) || (currentDir === -1 && distX < 0);
-                            if (facingPlayer && !this.isDead) {
-                                isAlerted = true;
-                                enemy.setData('alerted', true);
-                                this.tweens.add({ targets: enemy, scaleX: 1.1, scaleY: 1.1, duration: 100, yoyo: true }); 
-                            }
-                        }
-
-                        if (isAlerted) {
-                            if (Math.abs(distX) < 10) {
-                                enemy.setVelocityX(0);
-                            } else {
-                                const chaseDir = distX > 0 ? 1 : -1;
-                                let finalSpeed = currentSpeed;
-                                let isCharging = false;
-                                
-                                if (Math.abs(distY) < 30) {
-                                    finalSpeed = currentSpeed * 2.5;
-                                    isCharging = true;
-                                } else {
-                                    finalSpeed = currentSpeed * 1.2;
-                                }
-
-                                if (!checkFloorAhead(chaseDir)) {
-                                    enemy.setVelocityX(0);
-                                } else {
-                                    enemy.setVelocityX(finalSpeed * chaseDir);
-                                }
-                                
-                                if (isCharging) {
-                                    this.lightGraphics.fillStyle(0xFF0000, 0.4);
-                                    this.lightGraphics.fillCircle(enemy.x + (chaseDir*12), enemy.y - 10, 5);
-                                }
-                            }
+                            // Aggressive Patrol / Seek (When not charging)
+                            const dirToPlayer = dx > 0 ? 1 : -1;
+                            enemy.setData('dir', dirToPlayer);
                             
+                            if (checkFloorAhead(dirToPlayer)) {
+                                enemy.setVelocityX(currentSpeed * dirToPlayer);
+                            } else if (!isBlocked && enemy.body.touching.down) {
+                                // Gap jump attempt
+                                enemy.setVelocityY(-550);
+                                enemy.setVelocityX(currentSpeed * 1.5 * dirToPlayer);
+                            } else if (isBlocked && enemy.body.touching.down) {
+                                // Wall jump attempt
+                                enemy.setVelocityY(-550);
+                            }
                         } else {
-                            if (enemy.body.blocked.left || enemy.body.blocked.right || !checkFloorAhead(currentDir)) {
+                            // Idle Patrol
+                            if (isBlocked || !checkFloorAhead(currentDir)) {
                                 currentDir *= -1; 
                                 enemy.setData('dir', currentDir);
                             }
                             enemy.setVelocityX(currentSpeed * currentDir);
-                        }
-
-                    } else if (eType === 'triangle_hunter') {
-                        let isAlerted = enemy.getData('alerted');
-                        const distX = this.player.x - enemy.x;
-                        const distY = this.player.y - enemy.y;
-                        const detectionRange = 320;
-                        const detectionWidth = 50; 
-
-                        const coneLen = 220;
-                        const coneWidth = 90;
-                        const lx = enemy.x + (currentDir * 5);
-                        const ly = enemy.y - 5;
-                        
-                        const inRange = Math.abs(distX) < detectionRange && Math.abs(distY) < detectionWidth;
-                        const facingPlayer = (currentDir === 1 && distX > 0) || (currentDir === -1 && distX < 0);
-                        const playerInCone = inRange && facingPlayer && !this.isDead;
-
-                        if (playerInCone) {
-                            if (!isAlerted) enemy.setData('alerted', true);
-                            isAlerted = true;
-                        } else {
-                            if (isAlerted) enemy.setData('alerted', false);
-                            isAlerted = false;
-                        }
-
-                        if (isAlerted) {
-                            this.lightGraphics.fillStyle(0xFF0000, 0.2 + (Math.sin(time * 0.02) * 0.1));
-                        } else {
-                            this.lightGraphics.fillStyle(0xFFFF00, 0.12);
-                        }
-                        
-                        this.lightGraphics.beginPath();
-                        this.lightGraphics.moveTo(lx, ly);
-                        this.lightGraphics.lineTo(lx + (currentDir * coneLen), ly - (coneWidth/2));
-                        this.lightGraphics.lineTo(lx + (currentDir * coneLen), ly + (coneWidth/2));
-                        this.lightGraphics.closePath();
-                        this.lightGraphics.fill();
-
-                        if (isAlerted) {
-                            const chaseDir = distX > 0 ? 1 : -1;
-                            if (Math.abs(distX) > 10) {
-                                if (checkFloorAhead(chaseDir)) {
-                                    enemy.setVelocityX(currentSpeed * 1.6 * chaseDir);
-                                    enemy.setFlipX(chaseDir < 0);
-                                    enemy.setData('dir', chaseDir); 
-                                } else {
-                                    enemy.setVelocityX(0);
-                                    enemy.setFlipX(chaseDir < 0);
-                                    enemy.setData('dir', chaseDir);
-                                }
-                            }
-                        } else {
-                            if (enemy.body.blocked.left || enemy.body.blocked.right || !checkFloorAhead(currentDir)) {
-                                currentDir *= -1; 
-                                enemy.setData('dir', currentDir);
-                                enemy.setFlipX(currentDir < 0);
-                            }
-                            enemy.setVelocityX(currentSpeed * currentDir);
-                            enemy.setFlipX(currentDir < 0);
                         }
                     }
                 });

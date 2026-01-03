@@ -32,6 +32,7 @@ export interface GameConfig {
 export interface EnemyConfig {
   type: 'triangle_basic' | 'triangle_hunter' | 'triangle_heavy' | 'triangle_ranged' | 'triangle_rapid';
   x: number;
+  y?: number;      // Optional custom Y position (grid units)
   hp?: number;     // Optional custom HP
   speed?: number;  // Optional custom Speed
 }
@@ -64,10 +65,11 @@ export interface LevelConfig {
 
 export interface GameState {
   currentLevelId: number;
-  status: 'MENU' | 'PLAYING' | 'PAUSED' | 'DIED' | 'VICTORY' | 'EDITOR';
+  status: 'MENU' | 'PLAYING' | 'PAUSED' | 'DIED' | 'VICTORY' | 'EDITOR' | 'LEVEL_SELECT' | 'INTERMISSION';
   health: number;
   weapon: string | null;
   ammo: number;
   activeInfo: string | null;
-  hasKey: boolean; 
+  hasKey: boolean;
+  maxUnlockedLevel: number; 
 }
